@@ -1,14 +1,15 @@
 #!/bin/sh
 set -eu
 
-if [ "$#" -ne 3 ]; then
-    echo "usage: $0 BUILD_OUTPUT VERSION OUTPUT.raucb" >&2
+if [ "$#" -lt 3 ] || [ "$#" -gt 4 ]; then
+    echo "usage: $0 BUILD_OUTPUT VERSION OUTPUT.raucb [COMPATIBLE]" >&2
     exit 2
 fi
 
 build_output=$1
 version=$2
 bundle_output=$3
+compatible=${4:-qemu-ota-recovery-lab-x86_64}
 project_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 host_rauc="$build_output/host/bin/rauc"
 rootfs="$build_output/images/rootfs.ext4"
@@ -35,7 +36,7 @@ cp "$rootfs" "$work/rootfs.ext4"
 
 cat > "$work/manifest.raucm" <<EOF
 [update]
-compatible=qemu-ota-recovery-lab-x86_64
+compatible=$compatible
 version=$version
 description=QEMU OTA lab update $version
 

@@ -71,11 +71,12 @@ Run the complete automated scenario after the first toolchain build:
 make test-e2e
 ```
 
-It rejects a tampered signature, performs `v1 -> v2`, kills QEMU through QMP
-while the inactive slot is being written, verifies the old slot still boots,
-checks rollback from bad userspace, forces RAM-only recovery, then reinstalls a
-signed system from recovery. The full serial transcript is saved as
-`artifacts/e2e-serial.log`.
+It rejects a tampered signature, a truncated HTTP response, and a correctly
+signed bundle for another machine. It then performs `v1 -> v2`, kills QEMU
+through QMP while the inactive slot is being written, verifies the old slot
+still boots, checks rollback from bad userspace, forces RAM-only recovery, and
+reinstalls a signed system from recovery. The full serial transcript and a
+machine-readable result are saved under `artifacts/`.
 
 ## Project stages
 
