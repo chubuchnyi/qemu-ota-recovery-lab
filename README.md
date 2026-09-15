@@ -5,7 +5,19 @@ signed OTA update, chooses an A/B slot, rolls back a failed boot, and enters a
 RAM-only recovery environment. It intentionally uses generic x86_64 QEMU/KVM
 instead of emulating a specific board.
 
-## What the first milestone models
+## Project status
+
+**Paused at a complete learning milestone — 2026-09-15.**
+
+- Stages 1–5 are implemented and documented.
+- `make test-e2e` passes all 11 scenarios at
+  [`3f690267066b07c07bdedf34fdebd0df97a2ea42`](https://github.com/chubuchnyi/qemu-ota-recovery-lab/commit/3f690267066b07c07bdedf34fdebd0df97a2ea42).
+- Stage 6 (UEFI Secure Boot and root-hash authentication) and the optional
+  ARM64 port have not been started.
+- The natural resume point is Stage 6; the current repository remains a usable
+  standalone OTA, A/B rollback, recovery, and dm-verity lab.
+
+## What the current milestone models
 
 - GPT disk with a persistent EFI/GRUB partition, rootfs A, rootfs B, and data.
 - The same kernel and userland boot either from an ext4 A/B slot or as a
