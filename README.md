@@ -77,8 +77,9 @@ It rejects a tampered signature, a truncated HTTP response, and a correctly
 signed bundle for another machine. It then performs `v1 -> v2`, kills QEMU
 through QMP while the inactive slot is being written, verifies the old slot
 still boots, checks rollback from bad userspace, forces RAM-only recovery, and
-reinstalls a signed system from recovery. The full serial transcript and a
-machine-readable result are saved under `artifacts/`.
+reinstalls a signed system from recovery. Finally, it corrupts the active
+slot's dm-verity hash tree and checks automatic fallback. The full serial
+transcript and a machine-readable result are saved under `artifacts/`.
 
 ## Project stages
 
@@ -86,8 +87,9 @@ machine-readable result are saved under `artifacts/`.
 2. Install a valid signed A-to-B update and mark B good.
 3. Exercise invalid signatures, interrupted writes, and automatic rollback.
 4. Run automated serial/QMP tests with deterministic power-cut injection.
-5. Add dm-verity rootfs and UEFI Secure Boot as separate lessons.
-6. Optionally port the same state machine to ARM64 `virt` + U-Boot.
+5. Verify read-only A/B roots with dm-verity and inject hash-tree corruption.
+6. Authenticate the boot path and root hash with UEFI Secure Boot.
+7. Optionally port the same state machine to ARM64 `virt` + U-Boot.
 
 See [docs/design.md](docs/design.md) for the design.
 
@@ -95,6 +97,7 @@ See [docs/design.md](docs/design.md) for the design.
 
 1. [OTA fault injection: validation, power loss, rollback, and recovery](docs/lessons/01-ota-fault-injection.md)
 2. [A guarded recovery workflow](docs/lessons/02-guarded-recovery.md)
+3. [Runtime rootfs integrity with dm-verity](docs/lessons/03-dm-verity-rootfs.md)
 
 ## Upstream references
 

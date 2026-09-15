@@ -1,0 +1,26 @@
+OTA_LAB_TEST_COMMIT=3f690267066b07c07bdedf34fdebd0df97a2ea42
+OTA_LAB_VERITY_OPEN slot=A data=/dev/vda2 hash_offset=402657280
+device-mapper: verity: sha256 using "sha256-lib"
+EXT4-fs (dm-0): mounted filesystem 13944596-76e0-4aa3-ac86-a7cd98697fc0 ro with ordered data mode. Quota mode: disabled.
+OTA_LAB_VERITY_ACTIVE slot=A root=/dev/mapper/ota-root
+# veritysetup status ota-root >/dev/null
+__OTA_LAB_COMMAND_2_RC=0__
+# test "$(awk '$2 == "/" {print $1}' /proc/mounts)" = /dev/mapper/ota-root
+__OTA_LAB_COMMAND_3_RC=0__
+# touch /etc/ota-lab-write-test
+touch: /etc/ota-lab-write-test: Read-only file system
+__OTA_LAB_COMMAND_5_RC=1__
+OTA_LAB_VERITY_HASH_UPDATED slot=A hash_offset=402657280
+===== HOST FAULT INJECTION =====
+OTA_LAB_TEST_CORRUPTION slot=A region=verity-hash-tree offset=672145408 length=4096 pattern=0xa5
+wrote 4096/4096 bytes at offset 672145408
+OTA_LAB_VERITY_OPEN slot=A data=/dev/vda2 hash_offset=402657280
+device-mapper: verity: 254:2: metadata block 98306 is corrupted
+reboot: Restarting system with command 'dm-verity device corrupted'
+OTA_LAB_VERITY_OPEN slot=B data=/dev/vda3 hash_offset=402657280
+OTA_LAB_VERITY_ACTIVE slot=B root=/dev/mapper/ota-root
+OTA_LAB_BOOT_OK slot=B version=v2
+# veritysetup status ota-root >/dev/null
+__OTA_LAB_COMMAND_50_RC=0__
+# test "$(cat /data/e2e-marker)" = survives-all-reboots
+__OTA_LAB_COMMAND_52_RC=0__

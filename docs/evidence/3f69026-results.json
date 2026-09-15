@@ -1,0 +1,22 @@
+{
+  "commit": "3f690267066b07c07bdedf34fdebd0df97a2ea42",
+  "completed_at": "2026-09-15T11:00:18.348852+00:00",
+  "result": "PASS",
+  "restored_slot": "B",
+  "corrupted_slot": "A",
+  "corruption_offset": 672145408,
+  "fallback_slot": "B",
+  "scenarios": [
+    "pristine-slot-a-boot",
+    "recovery-command-refused-outside-recovery",
+    "tampered-signature-rejected",
+    "truncated-http-rejected",
+    "incompatible-bundle-rejected",
+    "signed-update-to-slot-b",
+    "qmp-power-cut-during-slot-write",
+    "failed-health-check-rollback",
+    "ram-only-recovery-inspection",
+    "guarded-reinstall-from-recovery",
+    "dm-verity-corruption-fallback"
+  ]
+}

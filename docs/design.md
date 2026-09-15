@@ -15,8 +15,8 @@ behaviour.
 | GPT partition | Content | Updated by normal OTA |
 |---|---|---|
 | 1 | FAT EFI, GRUB, `grubenv`, recovery kernel/initramfs | No |
-| 2 | ext4 rootfs A, including its kernel | When B is active |
-| 3 | ext4 rootfs B, including its kernel | When A is active |
+| 2 | read-only ext4 rootfs A + dm-verity tree, including its kernel | When B is active |
+| 3 | read-only ext4 rootfs B + dm-verity tree, including its kernel | When A is active |
 | 4 | ext4 persistent data | No |
 
 GRUB defaults to recovery. It selects a normal slot only when `<slot>_OK=1` and
@@ -28,20 +28,21 @@ This is intentionally visible and inspectable rather than clever: students can
 mount the EFI filesystem, run `grub-editenv ... list`, and correlate every bit
 with the serial log.
 
-`/run` is a tmpfs. This is an OTA invariant too: volatile network and daemon
-state must not survive an abrupt QEMU power cut and poison the next boot.
+`/run`, `/tmp`, and `/mnt` are tmpfs mounts. This is an OTA invariant too:
+volatile network, bundle-mount, and daemon state must not survive an abrupt
+QEMU power cut and poison the next boot.
 
 ## Trust boundaries
 
 The development CA signs every RAUC bundle. The target contains only its
 certificate. The private key remains on the host and is ignored by Git.
 
-The initial milestone authenticates OTA payloads but does not claim a verified
-boot chain. UEFI Secure Boot, signed GRUB/kernel artifacts, dm-verity rootfs,
-key rotation, and rollback-index protection are later independent exercises.
-In particular, the current lab will accept an older correctly signed bundle;
-that is intentional until the anti-rollback lesson adds a trusted monotonic
-version source.
+dm-verity now checks each normal rootfs against a per-slot root hash and mounts
+it read-only. This still is not a verified boot chain: the EFI partition,
+`grubenv`, kernel command line, GRUB, and slot kernels are not authenticated.
+UEFI Secure Boot and root-hash authentication are the next independent
+exercise. Key rotation and rollback-index protection remain later work; the
+current lab intentionally accepts an older correctly signed bundle.
 
 ## Fault-injection matrix
 
@@ -56,9 +57,11 @@ version source.
 | Recovery tool in a normal slot | Before recovery action | Command refuses to run |
 | Inspect failed A/B slots | RAM recovery | Slot byte hashes remain unchanged |
 | Damaged data partition | Recovery shell | A/B partitions remain inspectable |
+| Damaged active verity tree | Offline `qemu-io` write | dm-verity restarts; intact peer boots |
 
 The automated test also writes a marker to the data partition and checks it
-after OTA, hard power loss, rollback, recovery, and recovery-driven reinstall.
+after OTA, hard power loss, rollback, recovery, recovery-driven reinstall, and
+dm-verity fallback.
 
 QMP will be used to stop or reset the VM at deterministic log markers, while
 the serial console provides assertions such as `OTA_LAB_BOOT_OK` and
