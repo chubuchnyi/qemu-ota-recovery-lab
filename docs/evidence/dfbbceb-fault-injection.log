@@ -1,0 +1,13 @@
+OTA_LAB_TEST_COMMIT=dfbbceb7ef2e62d024973aafca52277af8fd1873
+OTA_LAB_BOOT_OK slot=A version=v1
+rauc-event-Message: 09:57:45.954: Installation 3578142b failed: signature verification failed: error:0200008A:rsa routines::invalid padding
+* end of response with 22644908 bytes missing
+rauc-event-Message: 09:57:46.164: Installation 20c71784 rejected: Compatible mismatch: Expected 'qemu-ota-recovery-lab-x86_64' but bundle manifest has 'qemu-ota-recovery-lab-not-this-machine'
+OTA_LAB_BOOT_OK slot=B version=v2
+ 46% Copying image to rootfs.0
+===== QEMU START =====
+OTA_LAB_BOOT_OK slot=B version=v2
+OTA_LAB_HEALTH_FAILED slot=A version=vbad
+OTA_LAB_BOOT_OK slot=B version=v2
+OTA_LAB_RECOVERY_READY version=v1
+OTA_LAB_BOOT_OK slot=B version=v2

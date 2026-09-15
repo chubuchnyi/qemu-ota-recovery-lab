@@ -91,6 +91,10 @@ See [docs/design.md](docs/design.md) for the design and
 [docs/flipper-evaluation.md](docs/flipper-evaluation.md) for why the lab does
 not start from the Flipper-specific installer/recovery repositories.
 
+## Lessons
+
+1. [OTA fault injection: validation, power loss, rollback, and recovery](docs/lessons/01-ota-fault-injection.md)
+
 ## Upstream references
 
 - [RAUC full-system QEMU/GRUB A/B example](https://rauc.readthedocs.io/en/latest/examples.html)

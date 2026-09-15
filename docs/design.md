@@ -49,6 +49,7 @@ version source.
 |---|---|---|
 | Wrong signature | Before installation | No slot or boot state changes |
 | Truncated bundle | Download/install | Active slot remains bootable |
+| Wrong `compatible` | Manifest validation | No slot or boot state changes |
 | QEMU power cut | While inactive slot is written | Active slot remains selected |
 | Bad userspace | Before `mark-good` | One failed try, then old slot boots |
 | Both slots bad | GRUB selection | RAM-only recovery boots |
