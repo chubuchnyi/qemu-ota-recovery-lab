@@ -87,8 +87,10 @@ serve:
 
 check:
 	shellcheck scripts/*.sh board/qemu-x86_64/*.sh \
-		board/qemu-x86_64/rootfs-overlay/etc/init.d/S*
-	bash -n scripts/*.sh board/qemu-x86_64/*.sh
+		board/qemu-x86_64/rootfs-overlay/etc/init.d/S* \
+		board/qemu-x86_64/rootfs-overlay/usr/sbin/ota-recovery
+	bash -n scripts/*.sh board/qemu-x86_64/*.sh \
+		board/qemu-x86_64/rootfs-overlay/usr/sbin/ota-recovery
 	python3 -c "compile(open('scripts/e2e_test.py', encoding='utf-8').read(), 'scripts/e2e_test.py', 'exec')"
 
 clean-output:

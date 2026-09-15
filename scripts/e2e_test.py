@@ -311,33 +311,36 @@ def run() -> None:
 
     try:
         print(f"implementation commit: {revision}", flush=True)
-        print("[1/9] boot pristine v1 in slot A", flush=True)
+        print("[1/10] boot pristine v1 in slot A", flush=True)
         vm.start(fresh=True)
         vm.login_after("OTA_LAB_BOOT_OK slot=A version=v1")
         vm.command("test \"$(cat /etc/ota-version)\" = v1")
         vm.command("rauc status >/dev/null")
         vm.command("echo survives-all-reboots > /data/e2e-marker")
 
-        print("[2/9] reject a bundle with a damaged signature", flush=True)
+        print("[2/10] refuse recovery tooling from a normal slot", flush=True)
+        vm.command("ota-recovery status", expected=2)
+
+        print("[3/10] reject a bundle with a damaged signature", flush=True)
         vm.command(f"rauc install {url}/{TAMPERED_BUNDLE.name}", expected=1)
         assert_pristine_boot_state(vm)
 
-        print("[3/9] survive a truncated HTTP response", flush=True)
+        print("[4/10] survive a truncated HTTP response", flush=True)
         vm.command(f"rauc install {url}{TRUNCATED_PATH}", expected=1)
         assert_pristine_boot_state(vm)
 
-        print("[4/9] reject a signed bundle for another machine", flush=True)
+        print("[5/10] reject a signed bundle for another machine", flush=True)
         vm.command(f"rauc install {url}/{INCOMPATIBLE_BUNDLE.name}", expected=1)
         assert_pristine_boot_state(vm)
 
-        print("[5/9] install signed v2 into B and boot it", flush=True)
+        print("[6/10] install signed v2 into B and boot it", flush=True)
         vm.command(f"rauc install {url}/{GOOD_BUNDLE.name}", timeout=90.0)
         vm.send("reboot\n")
         vm.login_after("OTA_LAB_BOOT_OK slot=B version=v2")
         vm.command("test \"$(cat /etc/ota-version)\" = v2")
         vm.command("test \"$(cat /data/e2e-marker)\" = survives-all-reboots")
 
-        print("[6/9] cut QEMU power while writing inactive slot A", flush=True)
+        print("[7/10] cut QEMU power while writing inactive slot A", flush=True)
         vm.send(f"rauc install {url}/{BROKEN_BUNDLE.name}\n")
         vm.wait_for(b"Copying image to rootfs.0", 90.0)
         vm.qmp_quit()
@@ -345,14 +348,14 @@ def run() -> None:
         vm.login_after("OTA_LAB_BOOT_OK slot=B version=v2")
         vm.command("test \"$(cat /data/e2e-marker)\" = survives-all-reboots")
 
-        print("[7/9] install bad userspace and verify automatic rollback", flush=True)
+        print("[8/10] install bad userspace and verify automatic rollback", flush=True)
         vm.command(f"rauc install {url}/{BROKEN_BUNDLE.name}", timeout=90.0)
         vm.send("reboot\n")
         vm.wait_for(b"OTA_LAB_HEALTH_FAILED slot=A version=vbad", 60.0)
         vm.login_after("OTA_LAB_BOOT_OK slot=B version=v2", timeout=90.0)
         vm.command("test \"$(cat /etc/ota-version)\" = v2")
 
-        print("[8/9] mark A and B bad and boot RAM-only recovery", flush=True)
+        print("[9/10] inspect failed slots from RAM-only recovery", flush=True)
         vm.command("rauc status mark-bad booted")
         vm.command("rauc status mark-bad other")
         vm.send("reboot\n")
@@ -362,9 +365,34 @@ def run() -> None:
         vm.command("grep -q ' /boot ' /proc/mounts && grep -q ' /data ' /proc/mounts")
         vm.command("test \"$(cat /data/e2e-marker)\" = survives-all-reboots")
         vm.command("rauc status >/dev/null")
+        vm.command(
+            "sha256sum /dev/vda2 /dev/vda3 > /tmp/recovery-slot-hashes"
+        )
+        vm.command(
+            "ota-recovery status > /tmp/ota-recovery-status && "
+            "cat /tmp/ota-recovery-status && "
+            "grep -q '^OTA_RECOVERY_CONTEXT mode=ram root_type=rootfs$' "
+            "/tmp/ota-recovery-status && "
+            "grep -q '^OTA_RECOVERY_SLOT name=A device=/dev/vda2 version=vbad$' "
+            "/tmp/ota-recovery-status && "
+            "grep -q '^OTA_RECOVERY_SLOT name=B device=/dev/vda3 version=v2$' "
+            "/tmp/ota-recovery-status && "
+            "grep -q '^OTA_RECOVERY_DATA device=/dev/vda4 mounted=yes$' "
+            "/tmp/ota-recovery-status"
+        )
+        vm.command(
+            "sha256sum /dev/vda2 /dev/vda3 | "
+            "cmp - /tmp/recovery-slot-hashes"
+        )
+        vm.command(
+            f"ota-recovery install {url}/{GOOD_BUNDLE.name}", expected=2
+        )
 
-        print("[9/9] reinstall a signed system from recovery and boot it", flush=True)
-        vm.command(f"rauc install {url}/{GOOD_BUNDLE.name}", timeout=90.0)
+        print("[10/10] reinstall through guarded recovery tooling", flush=True)
+        vm.command(
+            f"ota-recovery install {url}/{GOOD_BUNDLE.name} --confirm",
+            timeout=120.0,
+        )
         vm.send("reboot\n")
         restored = vm.wait_for(
             re.compile(rb"OTA_LAB_BOOT_OK slot=([AB]) version=v2"), 90.0
@@ -389,14 +417,15 @@ def run() -> None:
         "restored_slot": restored_slot,
         "scenarios": [
             "pristine-slot-a-boot",
+            "recovery-command-refused-outside-recovery",
             "tampered-signature-rejected",
             "truncated-http-rejected",
             "incompatible-bundle-rejected",
             "signed-update-to-slot-b",
             "qmp-power-cut-during-slot-write",
             "failed-health-check-rollback",
-            "ram-only-recovery",
-            "reinstall-from-recovery",
+            "ram-only-recovery-inspection",
+            "guarded-reinstall-from-recovery",
         ],
     }
     RESULTS_FILE.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")

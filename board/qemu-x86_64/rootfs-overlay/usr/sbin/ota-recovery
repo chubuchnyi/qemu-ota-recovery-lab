@@ -1,0 +1,154 @@
+#!/bin/sh
+set -eu
+
+system_conf=/etc/rauc/system.conf
+boot_env=/boot/EFI/BOOT/grubenv
+download=/tmp/ota-recovery-update.raucb
+mounted=
+write_locked=
+
+usage() {
+    cat <<'EOF'
+Usage:
+  ota-recovery status
+  ota-recovery install SOURCE --confirm
+
+SOURCE may be a local bundle path or an HTTP(S) URL.
+EOF
+}
+
+fail() {
+    echo "ota-recovery: $*" >&2
+    exit 2
+}
+
+cleanup() {
+    if [ -n "$mounted" ]; then
+        umount "$mounted" 2>/dev/null || true
+    fi
+    if [ -n "$write_locked" ]; then
+        hdparm -r0 "$write_locked" >/dev/null 2>&1 || true
+    fi
+    rm -f "$download"
+}
+
+require_recovery() {
+    if ! grep -qw 'ota.mode=recovery' /proc/cmdline; then
+        fail "refusing outside the RAM recovery environment"
+    fi
+}
+
+probe_slot() {
+    name=$1
+    device=$2
+    mount_dir="/mnt/recovery-slot-$name"
+    version=unreadable
+
+    mkdir -p "$mount_dir"
+    # A read-only ext4 mount may still replay the journal or clean orphan
+    # inodes.  The block-device flag enforces no writes; noload also skips the
+    # journal when a slot was interrupted mid-update.
+    if ! hdparm -r1 "$device" >/dev/null 2>&1; then
+        echo "OTA_RECOVERY_SLOT name=$name device=$device version=unreadable"
+        return
+    fi
+    write_locked=$device
+
+    if mount -t ext4 -o ro,noload "$device" "$mount_dir"; then
+        mounted=$mount_dir
+        if [ -r "$mount_dir/etc/ota-version" ]; then
+            version=$(cat "$mount_dir/etc/ota-version")
+        else
+            version=unknown
+        fi
+        umount "$mount_dir"
+        mounted=
+    fi
+
+    hdparm -r0 "$device" >/dev/null
+    write_locked=
+
+    echo "OTA_RECOVERY_SLOT name=$name device=$device version=$version"
+}
+
+show_status() {
+    root_type=$(awk '$2 == "/" {print $3}' /proc/mounts)
+    echo "OTA_RECOVERY_CONTEXT mode=ram root_type=${root_type:-unknown}"
+    echo "OTA_RECOVERY_BOOTSTATE_BEGIN"
+    grub-editenv "$boot_env" list
+    echo "OTA_RECOVERY_BOOTSTATE_END"
+    probe_slot A /dev/vda2
+    probe_slot B /dev/vda3
+
+    if mountpoint -q /data; then
+        echo "OTA_RECOVERY_DATA device=/dev/vda4 mounted=yes"
+    else
+        echo "OTA_RECOVERY_DATA device=/dev/vda4 mounted=no"
+    fi
+}
+
+install_bundle() {
+    source=$1
+    confirmation=${2:-}
+
+    if [ "$confirmation" != "--confirm" ]; then
+        fail "installation requires the final --confirm argument"
+    fi
+
+    case "$source" in
+        http://*|https://*)
+            echo "OTA_RECOVERY_DOWNLOAD source=$source"
+            curl --fail --location --silent --show-error \
+                --output "$download" "$source"
+            bundle=$download
+            ;;
+        *)
+            [ -f "$source" ] || fail "bundle not found: $source"
+            bundle=$source
+            ;;
+    esac
+
+    info=$(rauc info --output-format=shell "$bundle")
+    compatible=$(printf '%s\n' "$info" |
+        sed -n "s/^RAUC_MF_COMPATIBLE='\(.*\)'$/\1/p")
+    version=$(printf '%s\n' "$info" |
+        sed -n "s/^RAUC_MF_VERSION='\(.*\)'$/\1/p")
+    expected=$(sed -n 's/^compatible=//p' "$system_conf" | head -n 1)
+
+    [ -n "$compatible" ] || fail "verified bundle has no compatible value"
+    [ "$compatible" = "$expected" ] ||
+        fail "bundle compatible '$compatible' does not match '$expected'"
+
+    echo "OTA_RECOVERY_BUNDLE_VERIFIED compatible=$compatible version=${version:-unknown}"
+    rauc install "$bundle"
+    echo "OTA_RECOVERY_INSTALL_COMPLETE version=${version:-unknown}"
+}
+
+trap cleanup EXIT INT TERM
+
+case "${1:-}" in
+    -h|--help|help)
+        usage
+        exit 0
+        ;;
+esac
+
+require_recovery
+
+case "${1:-}" in
+    status)
+        [ "$#" -eq 1 ] || fail "status takes no arguments"
+        show_status
+        ;;
+    install)
+        if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
+            usage >&2
+            exit 2
+        fi
+        install_bundle "$2" "${3:-}"
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+esac
