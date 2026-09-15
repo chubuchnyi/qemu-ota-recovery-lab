@@ -9,6 +9,7 @@ RUN apt-get update \
         build-essential \
         ca-certificates \
         cpio \
+        cryptsetup-bin \
         curl \
         file \
         flex \

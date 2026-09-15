@@ -89,9 +89,7 @@ machine-readable result are saved under `artifacts/`.
 5. Add dm-verity rootfs and UEFI Secure Boot as separate lessons.
 6. Optionally port the same state machine to ARM64 `virt` + U-Boot.
 
-See [docs/design.md](docs/design.md) for the design and
-[docs/flipper-evaluation.md](docs/flipper-evaluation.md) for why the lab does
-not start from the Flipper-specific installer/recovery repositories.
+See [docs/design.md](docs/design.md) for the design.
 
 ## Lessons
 

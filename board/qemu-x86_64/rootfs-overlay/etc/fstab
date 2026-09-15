@@ -1,8 +1,10 @@
 # <source>   <target> <type> <options>          <dump> <pass>
 devtmpfs     /dev     devtmpfs mode=0755,nosuid 0      0
-/dev/root    /        ext4   rw,noauto          0      1
+/dev/root    /        ext4   ro,noauto          0      1
 /dev/vda1    /boot    vfat   defaults           0      0
 /dev/vda4    /data    ext4   defaults,nofail    0      0
 proc         /proc    proc   defaults           0      0
 sysfs        /sys     sysfs  defaults           0      0
 tmpfs        /run     tmpfs  mode=0755,nosuid,nodev 0  0
+tmpfs        /tmp     tmpfs  mode=1777,nosuid,nodev 0  0
+tmpfs        /mnt     tmpfs  mode=0755,nosuid,nodev 0  0

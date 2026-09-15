@@ -1,0 +1,68 @@
+#!/bin/sh
+set -eu
+
+slot=unknown
+data_device=
+hash_offset=
+root_hash=
+
+fail() {
+    echo "OTA_LAB_VERITY_SETUP_FAILED slot=$slot reason=$*"
+    sleep 1
+    reboot -f
+    while :; do sleep 60; done
+}
+
+mount -t devtmpfs devtmpfs /dev 2>/dev/null || true
+mount -t proc proc /proc 2>/dev/null || true
+mount -t sysfs sysfs /sys 2>/dev/null || true
+mkdir -p /dev/mapper /newroot
+
+cmdline=$(cat /proc/cmdline)
+# Kernel command-line parameters are intentionally split on spaces here.
+# shellcheck disable=SC2086
+set -- $cmdline
+for argument do
+    case "$argument" in
+        rauc.slot=*) slot=${argument#rauc.slot=} ;;
+        ota.verity-data=*) data_device=${argument#ota.verity-data=} ;;
+        ota.verity-hash-offset=*)
+            hash_offset=${argument#ota.verity-hash-offset=}
+            ;;
+        ota.verity-root-hash=*)
+            root_hash=${argument#ota.verity-root-hash=}
+            ;;
+    esac
+done
+
+case "$slot" in
+    A|B) ;;
+    *) fail "invalid-slot" ;;
+esac
+
+case "$data_device" in
+    /dev/vda2|/dev/vda3) ;;
+    *) fail "invalid-data-device" ;;
+esac
+
+case "$hash_offset" in
+    ''|*[!0-9]*) fail "invalid-hash-offset" ;;
+esac
+
+case "$root_hash" in
+    ''|*[!0-9a-fA-F]*) fail "invalid-root-hash" ;;
+esac
+[ "${#root_hash}" -eq 64 ] || fail "invalid-root-hash-length"
+
+echo "OTA_LAB_VERITY_OPEN slot=$slot data=$data_device hash_offset=$hash_offset"
+veritysetup --hash-offset="$hash_offset" --restart-on-corruption \
+    open "$data_device" ota-root "$data_device" "$root_hash" || \
+    fail "verity-open"
+
+mount -t ext4 -o ro /dev/mapper/ota-root /newroot || fail "root-mount"
+echo "OTA_LAB_VERITY_ACTIVE slot=$slot root=/dev/mapper/ota-root"
+
+mount --move /dev /newroot/dev || fail "move-dev"
+mount --move /proc /newroot/proc || fail "move-proc"
+mount --move /sys /newroot/sys || fail "move-sys"
+exec switch_root /newroot /sbin/init

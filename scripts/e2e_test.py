@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the OTA, power-cut, rollback, and recovery scenarios over QEMU serial."""
+"""Run the OTA, integrity, power-cut, rollback, and recovery scenarios."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ import re
 import select
 import shutil
 import socket
+import struct
 import subprocess
 import sys
 import tempfile
@@ -31,6 +32,7 @@ RESULTS_FILE = ARTIFACTS_DIR / "e2e-results.json"
 RUN_QEMU = PROJECT_DIR / "scripts" / "run-qemu.sh"
 CREATE_BUNDLE = PROJECT_DIR / "scripts" / "create-bundle.sh"
 BUILD_OUTPUT = PROJECT_DIR / "output" / "buildroot"
+HASH_OFFSET_FILE = BUILD_OUTPUT / "images" / "rootfs.hash-offset"
 HOST_RAUC = PROJECT_DIR / "output" / "buildroot" / "host" / "bin" / "rauc"
 KEYRING = PROJECT_DIR / "keys" / "dev" / "ca.cert.pem"
 EXPECTED_COMPATIBLE = "qemu-ota-recovery-lab-x86_64"
@@ -214,12 +216,87 @@ def require_artifacts() -> None:
         BROKEN_BUNDLE,
         CREATE_BUNDLE,
         BUILD_OUTPUT / "images" / "rootfs.ext4",
+        HASH_OFFSET_FILE,
         HOST_RAUC,
         KEYRING,
     ]
     missing = [str(path) for path in required if not path.exists()]
     if missing:
         raise LabError("missing build artifacts:\n  " + "\n  ".join(missing))
+    if shutil.which("qemu-io") is None:
+        raise LabError("qemu-io is required for the offline disk-corruption test")
+
+
+def gpt_partition_offset(image: Path, partition_number: int) -> int:
+    """Return a GPT partition's byte offset from a raw disk image."""
+    sector_size = 512
+    with image.open("rb") as disk:
+        disk.seek(sector_size)
+        header = disk.read(92)
+        if len(header) != 92 or header[:8] != b"EFI PART":
+            raise LabError(f"invalid GPT header in {image}")
+
+        entries_lba = struct.unpack_from("<Q", header, 72)[0]
+        entry_count = struct.unpack_from("<I", header, 80)[0]
+        entry_size = struct.unpack_from("<I", header, 84)[0]
+        if not 1 <= partition_number <= entry_count or entry_size < 128:
+            raise LabError(f"invalid GPT partition number: {partition_number}")
+
+        entry_offset = (
+            entries_lba * sector_size + (partition_number - 1) * entry_size
+        )
+        disk.seek(entry_offset)
+        entry = disk.read(entry_size)
+        if len(entry) != entry_size or entry[:16] == bytes(16):
+            raise LabError(f"missing GPT partition {partition_number} in {image}")
+        first_lba = struct.unpack_from("<Q", entry, 32)[0]
+        if first_lba == 0:
+            raise LabError(f"invalid first LBA for GPT partition {partition_number}")
+        return first_lba * sector_size
+
+
+def corrupt_overlay(vm: SerialVM, slot: str) -> int:
+    """Overwrite one hash-tree block inside a stopped slot's qcow2 overlay."""
+    partition_number = {"A": 2, "B": 3}[slot]
+    partition_offset = gpt_partition_offset(BASE_IMAGE, partition_number)
+    try:
+        hash_offset = int(HASH_OFFSET_FILE.read_text(encoding="ascii").strip())
+    except ValueError as error:
+        raise LabError(f"invalid verity hash offset in {HASH_OFFSET_FILE}") from error
+    # Keep ext4 intact so GRUB can load the slot's kernel.  veritysetup writes
+    # its 4 KiB superblock at hash_offset and the Merkle tree immediately after
+    # it; changing the first tree block is detected on the first rootfs reads.
+    corruption_offset = partition_offset + hash_offset + 4096
+    overlay = vm.state_dir / "disk.qcow2"
+    command = [
+        "qemu-io",
+        "-f",
+        "qcow2",
+        "-c",
+        f"write -P 0xa5 {corruption_offset} 4096",
+        str(overlay),
+    ]
+    completed = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        check=False,
+    )
+    vm.log_file.write(
+        (
+            "\n===== HOST FAULT INJECTION =====\n"
+            f"OTA_LAB_TEST_CORRUPTION slot={slot} region=verity-hash-tree "
+            f"offset={corruption_offset} length=4096 pattern=0xa5\n"
+        ).encode("ascii")
+    )
+    vm.log_file.write(completed.stdout)
+    vm.log_file.flush()
+    if completed.returncode != 0:
+        raise LabError(
+            "qemu-io corruption failed:\n"
+            + completed.stdout.decode("utf-8", errors="replace")
+        )
+    return corruption_offset
 
 
 def rauc_info(bundle: Path) -> subprocess.CompletedProcess[bytes]:
@@ -311,36 +388,46 @@ def run() -> None:
 
     try:
         print(f"implementation commit: {revision}", flush=True)
-        print("[1/10] boot pristine v1 in slot A", flush=True)
+        print("[1/11] boot pristine v1 in slot A through dm-verity", flush=True)
         vm.start(fresh=True)
         vm.login_after("OTA_LAB_BOOT_OK slot=A version=v1")
         vm.command("test \"$(cat /etc/ota-version)\" = v1")
+        vm.command("veritysetup status ota-root >/dev/null")
+        vm.command(
+            "test \"$(awk '$2 == \"/\" {print $1}' /proc/mounts)\" = "
+            "/dev/mapper/ota-root"
+        )
+        vm.command(
+            "awk '$2 == \"/\" {print $4}' /proc/mounts | "
+            "tr , '\\n' | grep -qx ro"
+        )
+        vm.command("touch /etc/ota-lab-write-test", expected=1)
         vm.command("rauc status >/dev/null")
         vm.command("echo survives-all-reboots > /data/e2e-marker")
 
-        print("[2/10] refuse recovery tooling from a normal slot", flush=True)
+        print("[2/11] refuse recovery tooling from a normal slot", flush=True)
         vm.command("ota-recovery status", expected=2)
 
-        print("[3/10] reject a bundle with a damaged signature", flush=True)
+        print("[3/11] reject a bundle with a damaged signature", flush=True)
         vm.command(f"rauc install {url}/{TAMPERED_BUNDLE.name}", expected=1)
         assert_pristine_boot_state(vm)
 
-        print("[4/10] survive a truncated HTTP response", flush=True)
+        print("[4/11] survive a truncated HTTP response", flush=True)
         vm.command(f"rauc install {url}{TRUNCATED_PATH}", expected=1)
         assert_pristine_boot_state(vm)
 
-        print("[5/10] reject a signed bundle for another machine", flush=True)
+        print("[5/11] reject a signed bundle for another machine", flush=True)
         vm.command(f"rauc install {url}/{INCOMPATIBLE_BUNDLE.name}", expected=1)
         assert_pristine_boot_state(vm)
 
-        print("[6/10] install signed v2 into B and boot it", flush=True)
+        print("[6/11] install signed v2 into B and boot it", flush=True)
         vm.command(f"rauc install {url}/{GOOD_BUNDLE.name}", timeout=90.0)
         vm.send("reboot\n")
         vm.login_after("OTA_LAB_BOOT_OK slot=B version=v2")
         vm.command("test \"$(cat /etc/ota-version)\" = v2")
         vm.command("test \"$(cat /data/e2e-marker)\" = survives-all-reboots")
 
-        print("[7/10] cut QEMU power while writing inactive slot A", flush=True)
+        print("[7/11] cut QEMU power while writing inactive slot A", flush=True)
         vm.send(f"rauc install {url}/{BROKEN_BUNDLE.name}\n")
         vm.wait_for(b"Copying image to rootfs.0", 90.0)
         vm.qmp_quit()
@@ -348,14 +435,14 @@ def run() -> None:
         vm.login_after("OTA_LAB_BOOT_OK slot=B version=v2")
         vm.command("test \"$(cat /data/e2e-marker)\" = survives-all-reboots")
 
-        print("[8/10] install bad userspace and verify automatic rollback", flush=True)
+        print("[8/11] install bad userspace and verify automatic rollback", flush=True)
         vm.command(f"rauc install {url}/{BROKEN_BUNDLE.name}", timeout=90.0)
         vm.send("reboot\n")
         vm.wait_for(b"OTA_LAB_HEALTH_FAILED slot=A version=vbad", 60.0)
         vm.login_after("OTA_LAB_BOOT_OK slot=B version=v2", timeout=90.0)
         vm.command("test \"$(cat /etc/ota-version)\" = v2")
 
-        print("[9/10] inspect failed slots from RAM-only recovery", flush=True)
+        print("[9/11] inspect failed slots from RAM-only recovery", flush=True)
         vm.command("rauc status mark-bad booted")
         vm.command("rauc status mark-bad other")
         vm.send("reboot\n")
@@ -388,7 +475,7 @@ def run() -> None:
             f"ota-recovery install {url}/{GOOD_BUNDLE.name}", expected=2
         )
 
-        print("[10/10] reinstall through guarded recovery tooling", flush=True)
+        print("[10/11] reinstall through guarded recovery tooling", flush=True)
         vm.command(
             f"ota-recovery install {url}/{GOOD_BUNDLE.name} --confirm",
             timeout=120.0,
@@ -404,6 +491,34 @@ def run() -> None:
         vm.command("test \"$(cat /data/e2e-marker)\" = survives-all-reboots")
         restored_slot = restored.group(1).decode("ascii")
         print(f"      recovery restored slot {restored_slot}", flush=True)
+
+        print("[11/11] corrupt an active slot and fall back via dm-verity", flush=True)
+        corrupted_slot = "B" if restored_slot == "A" else "A"
+        vm.command(f"rauc install {url}/{GOOD_BUNDLE.name}", timeout=90.0)
+        vm.send("reboot\n")
+        vm.login_after(
+            f"OTA_LAB_BOOT_OK slot={corrupted_slot} version=v2", timeout=90.0
+        )
+        vm.command("veritysetup status ota-root >/dev/null")
+        vm.command("test \"$(cat /data/e2e-marker)\" = survives-all-reboots")
+        vm.qmp_quit()
+        corruption_offset = corrupt_overlay(vm, corrupted_slot)
+        vm.start(fresh=False)
+        vm.wait_for(
+            re.compile(rb"device-mapper: verity:.*corrupt", re.IGNORECASE),
+            60.0,
+        )
+        vm.login_after(
+            f"OTA_LAB_BOOT_OK slot={restored_slot} version=v2", timeout=90.0
+        )
+        vm.command("veritysetup status ota-root >/dev/null")
+        vm.command("test \"$(cat /etc/ota-version)\" = v2")
+        vm.command("test \"$(cat /data/e2e-marker)\" = survives-all-reboots")
+        print(
+            f"      corrupted slot {corrupted_slot} at byte {corruption_offset}; "
+            f"fell back to {restored_slot}",
+            flush=True,
+        )
     finally:
         vm.stop()
         server.shutdown()
@@ -415,6 +530,9 @@ def run() -> None:
         "completed_at": datetime.now(timezone.utc).isoformat(),
         "result": "PASS",
         "restored_slot": restored_slot,
+        "corrupted_slot": corrupted_slot,
+        "corruption_offset": corruption_offset,
+        "fallback_slot": restored_slot,
         "scenarios": [
             "pristine-slot-a-boot",
             "recovery-command-refused-outside-recovery",
@@ -426,6 +544,7 @@ def run() -> None:
             "failed-health-check-rollback",
             "ram-only-recovery-inspection",
             "guarded-reinstall-from-recovery",
+            "dm-verity-corruption-fallback",
         ],
     }
     RESULTS_FILE.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
