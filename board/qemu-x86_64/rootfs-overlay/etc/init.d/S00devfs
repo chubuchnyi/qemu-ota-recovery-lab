@@ -1,0 +1,22 @@
+#!/bin/sh
+
+case "$1" in
+    start)
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+# CONFIG_DEVTMPFS_MOUNT handles a disk-backed rootfs.  With an initramfs,
+# devtmpfs is mounted later by /etc/fstab and hides the directories BusyBox
+# init created before `mount -a`, so recreate the volatile mount points here.
+mkdir -p /dev/pts /dev/shm
+
+if ! grep -qs ' /dev/pts ' /proc/mounts; then
+    mount -t devpts -o gid=5,mode=620,ptmxmode=0666 devpts /dev/pts
+fi
+
+if ! grep -qs ' /dev/shm ' /proc/mounts; then
+    mount -t tmpfs -o mode=1777,nosuid,nodev tmpfs /dev/shm
+fi

@@ -1,0 +1,8 @@
+/output/
+/dl/
+/artifacts/*
+!/artifacts/.gitkeep
+/keys/dev/*
+!/keys/dev/.gitkeep
+/run/*
+!/run/.gitkeep

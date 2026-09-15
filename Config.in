@@ -1,0 +1,5 @@
+menu "QEMU OTA/recovery lab"
+
+comment "The lab currently uses only upstream Buildroot packages"
+
+endmenu

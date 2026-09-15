@@ -1,0 +1,8 @@
+
+QEMU OTA/recovery lab
+
+Useful commands:
+  cat /etc/ota-version
+  rauc status
+  rauc install http://10.0.2.2:8000/update-v2.raucb
+  reboot

@@ -1,0 +1,45 @@
+#!/bin/sh
+
+case "$1" in
+    start)
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+cmdline=$(cat /proc/cmdline)
+version=$(cat /etc/ota-version 2>/dev/null || echo unknown)
+
+# The data partition is shared by both normal slots and recovery.  RAUC uses
+# it for persistent status while the boot decision itself stays in grubenv.
+mkdir -p /data/rauc
+
+case " $cmdline " in
+    *" ota.mode=recovery "*)
+        echo "OTA_LAB_RECOVERY_READY version=$version"
+        exit 0
+        ;;
+esac
+
+slot=unknown
+for arg in $cmdline; do
+    case "$arg" in
+        rauc.slot=*) slot=${arg#rauc.slot=} ;;
+    esac
+done
+
+if [ -e /etc/ota-break-boot ]; then
+    echo "OTA_LAB_HEALTH_FAILED slot=$slot version=$version"
+    sync
+    sleep 2
+    reboot -f
+    exit 1
+fi
+
+if rauc status mark-good; then
+    echo "OTA_LAB_BOOT_OK slot=$slot version=$version"
+else
+    echo "OTA_LAB_MARK_GOOD_FAILED slot=$slot version=$version"
+    exit 1
+fi
