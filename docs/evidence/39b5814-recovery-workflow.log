@@ -1,0 +1,28 @@
+OTA_LAB_TEST_COMMIT=39b5814a652a52b7552bb31c4d2f55d1167365df
+ota-recovery: refusing outside the RAM recovery environment
+OTA_LAB_RECOVERY_READY version=v1
+# sha256sum /dev/vda2 /dev/vda3 > /tmp/recovery-slot-hashes
+__OTA_LAB_COMMAND_36_RC=0__
+EXT4-fs (vda2): write access unavailable, skipping orphan cleanup
+EXT4-fs (vda3): write access unavailable, skipping orphan cleanup
+OTA_RECOVERY_CONTEXT mode=ram root_type=rootfs
+OTA_RECOVERY_BOOTSTATE_BEGIN
+ORDER=A R B
+A_OK=0
+B_OK=0
+R_OK=1
+A_TRY=1
+B_TRY=1
+R_TRY=0
+OTA_RECOVERY_BOOTSTATE_END
+OTA_RECOVERY_SLOT name=A device=/dev/vda2 version=vbad
+OTA_RECOVERY_SLOT name=B device=/dev/vda3 version=v2
+OTA_RECOVERY_DATA device=/dev/vda4 mounted=yes
+# sha256sum /dev/vda2 /dev/vda3 | cmp - /tmp/recovery-slot-hashes
+__OTA_LAB_COMMAND_38_RC=0__
+ota-recovery: installation requires the final --confirm argument
+rauc-Message: 10:21:06.662: Verified inline signature by 'O = QEMU OTA Lab, CN = development signing key'
+OTA_RECOVERY_BUNDLE_VERIFIED compatible=qemu-ota-recovery-lab-x86_64 version=v2
+rauc-event-Message: 10:21:07.526: Installation c4d3b627 succeeded
+OTA_RECOVERY_INSTALL_COMPLETE version=v2
+OTA_LAB_BOOT_OK slot=B version=v2

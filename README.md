@@ -17,6 +17,8 @@ instead of emulating a specific board.
 - A deliberately broken image reboots without marking itself good, so GRUB
   falls back to the previous slot. If neither normal slot is usable, GRUB boots
   recovery.
+- RAM recovery provides a guarded `ota-recovery` command for non-writing slot
+  inspection and signed reinstall.
 - QEMU writes only to a qcow2 overlay; the generated base image stays pristine.
 
 ## Quick start
@@ -94,6 +96,7 @@ not start from the Flipper-specific installer/recovery repositories.
 ## Lessons
 
 1. [OTA fault injection: validation, power loss, rollback, and recovery](docs/lessons/01-ota-fault-injection.md)
+2. [A guarded recovery workflow](docs/lessons/02-guarded-recovery.md)
 
 ## Upstream references
 

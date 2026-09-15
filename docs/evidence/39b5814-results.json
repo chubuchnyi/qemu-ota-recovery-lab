@@ -1,0 +1,18 @@
+{
+  "commit": "39b5814a652a52b7552bb31c4d2f55d1167365df",
+  "completed_at": "2026-09-15T10:21:15.228339+00:00",
+  "result": "PASS",
+  "restored_slot": "B",
+  "scenarios": [
+    "pristine-slot-a-boot",
+    "recovery-command-refused-outside-recovery",
+    "tampered-signature-rejected",
+    "truncated-http-rejected",
+    "incompatible-bundle-rejected",
+    "signed-update-to-slot-b",
+    "qmp-power-cut-during-slot-write",
+    "failed-health-check-rollback",
+    "ram-only-recovery-inspection",
+    "guarded-reinstall-from-recovery"
+  ]
+}

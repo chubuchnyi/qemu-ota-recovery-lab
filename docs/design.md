@@ -53,6 +53,8 @@ version source.
 | QEMU power cut | While inactive slot is written | Active slot remains selected |
 | Bad userspace | Before `mark-good` | One failed try, then old slot boots |
 | Both slots bad | GRUB selection | RAM-only recovery boots |
+| Recovery tool in a normal slot | Before recovery action | Command refuses to run |
+| Inspect failed A/B slots | RAM recovery | Slot byte hashes remain unchanged |
 | Damaged data partition | Recovery shell | A/B partitions remain inspectable |
 
 The automated test also writes a marker to the data partition and checks it
